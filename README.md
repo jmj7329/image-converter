@@ -1,4 +1,4 @@
-## 📸 Supported Image Formats
+## Supported Image Formats
 
 This tool supports two-way conversion between the following formats and extensions:
 
