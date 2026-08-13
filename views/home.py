@@ -6,7 +6,6 @@ st.markdown("<h1 style='text-align: center;'>Free Online Utilities</h1>", unsafe
 st.markdown("<p style='text-align: center; color: #64748b;'>No sign-up required. Fast, free, and completely browser-based.</p>", unsafe_allow_html=True)
 st.divider()
 
-# Create a grid of available tools
 col1, col2 = st.columns(2, gap="medium")
 
 with col1:
