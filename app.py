@@ -1,22 +1,36 @@
 import streamlit as st
 from PIL import Image
 import io
+import os
 
-
+# 1. Page Configuration
 st.set_page_config(
     page_title="Image Converter", 
     page_icon="🖼️", 
     layout="centered"
 )
 
+# --- Session State Initialization ---
 if "uploader_key" not in st.session_state:
     st.session_state.uploader_key = 0
+# Add a state to hold the uploaded file object itself
+if "persisted_file" not in st.session_state:
+    st.session_state.persisted_file = None
+if "converted_bytes" not in st.session_state:
+    st.session_state.converted_bytes = None
+if "converted_format" not in st.session_state:
+    st.session_state.converted_format = None
+if "download_file_name" not in st.session_state:
+    st.session_state.download_file_name = None
+if "current_file_name" not in st.session_state:
+    st.session_state.current_file_name = None
 
-
+# --- Theme Toggle ---
 top_col1, top_col2 = st.columns([4, 1])
 with top_col2:
     dark_mode = st.toggle("🌙 Dark", value=False)
 
+# --- Dynamic Color Variables for Light & Dark Mode ---
 if dark_mode:
     bg_gradient = "linear-gradient(180deg, #1e293b 0%, #0f172a 220px, #0f172a 100%)"
     text_color = "#f8fafc"
@@ -42,6 +56,7 @@ else:
     btn_sec_text = "#475569"
     btn_sec_border = "#cbd5e1"
 
+# 2. Inject Custom CSS
 st.markdown(f"""
     <style>
     /* Global Page Background Gradient */
@@ -71,6 +86,14 @@ st.markdown(f"""
         color: {text_color} !important;
         font-weight: 600 !important;
         opacity: 1 !important;
+    }}
+
+    /* FORCE BLACK TEXT IN GREEN CONVERSION COMPLETE (ST.SUCCESS) BOX */
+    div[data-testid="stAlert"] *,
+    div[data-testid="stAlert"] p,
+    div[data-testid="stAlert"] span {{
+        color: #000000 !important;
+        font-weight: 600 !important;
     }}
 
     /* Outer Dashed Drop Box Container */
@@ -112,14 +135,14 @@ st.markdown(f"""
 
     /* Centered Square Upload Button styling */
     div[data-testid="stFileUploader"] button {{
-        width: 80px !important;
-        height: 80px !important;
+        width: 140px !important;
+        height: 60px !important;
         background-color: #4f46e5 !important;
         color: #ffffff !important;
         border: none !important;
         border-radius: 16px !important;
         font-weight: 700 !important;
-        font-size: 1.8rem !important;
+        font-size: 3rem !important;
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
@@ -219,33 +242,65 @@ st.markdown(f"""
         margin: 0;
         padding-left: 18px;
     }}
+    /* Preview Image Styling */
+    div[data-testid="stImage"] img {{
+        border: 2px solid {card_border} !important;
+        border-radius: 12px !important;
+        padding: 4px !important; /* Optional: adds a slight gap between image and border */
+        background-color: {card_bg} !important; /* Matches your theme */
+    }}
     </style>
 """, unsafe_allow_html=True)
 
-
+# --- Header Section ---
 st.markdown('<h1 class="title-text">Image Converter</h1>', unsafe_allow_html=True)
 st.markdown('<p class="subtitle-text">Convert images online, for free.</p>', unsafe_allow_html=True)
 
+# --- Drag & Drop Upload Zone ---
+uploader_placeholder = st.empty()
+terms_placeholder = st.empty()
 
-uploaded_file = st.file_uploader(
-    "Choose Files", 
-    type=["png", "jpg", "jpeg", "webp", "bmp", "tiff"],
-    label_visibility="collapsed",
-    key=f"uploader_{st.session_state.uploader_key}"
-)
+# Only show the uploader if there is no file in session state
+if st.session_state.persisted_file is None:
+    uploaded_file = uploader_placeholder.file_uploader(
+        "Choose Files", 
+        type=["png", "jpg", "jpeg", "webp", "bmp", "tiff"],
+        label_visibility="collapsed",
+        key=f"uploader_{st.session_state.uploader_key}"
+    )
 
-st.markdown(
-    '<p class="terms-text">By proceeding, you confirm you own the rights to the files you upload and agree to our Terms of Use.</p>', 
-    unsafe_allow_html=True
-)
-
-
-if uploaded_file is not None:
-    st.divider()
-    image = Image.open(uploaded_file)
+    terms_placeholder.markdown(
+        '<p class="terms-text">By proceeding, you confirm you own the rights to the files you upload and agree to our Terms of Use.</p>', 
+        unsafe_allow_html=True
+    )
     
+    # When a file is selected via the widget, save it to session state and rerun
+    if uploaded_file is not None:
+        st.session_state.persisted_file = uploaded_file
+        st.rerun()
 
-    file_ext = uploaded_file.name.split('.')[-1].upper()
+# --- Converter Logic ---
+# Base everything off the persisted_file in session_state, not the widget directly
+if st.session_state.persisted_file is not None:
+    
+    # Hide the uploader and terms by completely clearing their placeholders
+    uploader_placeholder.empty()
+    terms_placeholder.empty()
+
+    # Get the file from session state
+    working_file = st.session_state.persisted_file
+
+    # Reset conversion state if a brand new file is uploaded
+    if st.session_state.current_file_name != working_file.name:
+        st.session_state.current_file_name = working_file.name
+        st.session_state.converted_bytes = None
+        st.session_state.converted_format = None
+        st.session_state.download_file_name = None
+
+    st.divider()
+    image = Image.open(working_file)
+    
+    file_ext = working_file.name.split('.')[-1].upper()
     if file_ext == "JPG":
         file_ext = "JPEG"
     elif file_ext == "TIF":
@@ -257,9 +312,8 @@ if uploaded_file is not None:
     col1, col2 = st.columns([1, 1], gap="large")
     
     with col1:
-
         st.markdown(
-            f'<div class="file-preview-title">{uploaded_file.name}</div>', 
+            f'<div class="file-preview-title">{working_file.name}</div>', 
             unsafe_allow_html=True
         )
         st.image(image, width="stretch")
@@ -268,7 +322,13 @@ if uploaded_file is not None:
         st.markdown('<div style="height: 32px;"></div>', unsafe_allow_html=True)
 
         if st.button("✕ Remove File", width="stretch", type="secondary"):
+            # Clean up EVERYTHING to return to the original upload state
             st.session_state.uploader_key += 1
+            st.session_state.persisted_file = None
+            st.session_state.converted_bytes = None
+            st.session_state.converted_format = None
+            st.session_state.download_file_name = None
+            st.session_state.current_file_name = None
             st.rerun()
 
         target_format = st.selectbox(
@@ -284,20 +344,27 @@ if uploaded_file is not None:
                 img_to_save = img_to_save.convert("RGB")
                 
             img_to_save.save(buffer, format=target_format)
-            buffer.seek(0)
-            master_string = uploaded_file.name
-            for item in [".jpg",".png",".tif",".tiff",".bmp",".jpeg","webp"]:
-                master_string = master_string.replace(item, "")
+            
+            # Custom filename processing logic
+            master_string = os.path.splitext(working_file.name)[0]
+                
+            # Store in session_state to persist across dark/light mode toggles
+            st.session_state.converted_bytes = buffer.getvalue()
+            st.session_state.converted_format = target_format
+            st.session_state.download_file_name = f"converted-{master_string}.{target_format.lower()}"
+
+        # Persistent Display of Download Button
+        if st.session_state.converted_bytes is not None:
             st.success("Conversion complete!")
             st.download_button(
-                label=f"Download .{target_format.lower()}",
-                data=buffer,
-                file_name=f"converted-{master_string}.{target_format.lower()}",
-                mime=f"image/{target_format.lower()}",
-                width="stretch"
+                label=f"Download .{st.session_state.converted_format.lower()}",
+                data=st.session_state.converted_bytes,
+                file_name=st.session_state.download_file_name,
+                mime=f"image/{st.session_state.converted_format.lower()}",
+                width="stretch" 
             )
 
-
+# --- Footer Info Card ---
 st.markdown(f"""
     <div class="feature-card">
         <div class="feature-title">Fast, Private & Free Image Conversions</div>
